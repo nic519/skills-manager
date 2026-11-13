@@ -44,10 +44,19 @@ jobs:
           --bundles dmg
           --config '{"bundle":{"createUpdaterArtifacts":false,"macOS":{"signingIdentity":"-"}}}'
 
-      - name: Verify application signature
-        run: >-
-          codesign --verify --deep --strict --verbose=2
-          src-tauri/target/aarch64-apple-darwin/release/bundle/macos/skills-manager.app
+      # Tauri removes the temporary .app when only DMG is requested.
+      # Verify the application inside the installer that will be downloaded.
+      - name: Verify packaged application signature
+        run: |
+          set -euo pipefail
+          DMG_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg"
+          DMG_PATH="$(find "$DMG_DIR" -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$DMG_PATH"
+          MOUNT_PATH="$RUNNER_TEMP/personal-dmg"
+          mkdir -p "$MOUNT_PATH"
+          hdiutil attach "$DMG_PATH" -mountpoint "$MOUNT_PATH" -readonly -nobrowse
+          trap 'hdiutil detach "$MOUNT_PATH"' EXIT
+          codesign --verify --deep --strict --verbose=2 "$MOUNT_PATH/skills-manager.app"
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
